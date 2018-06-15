@@ -7,7 +7,6 @@
 #include <stdarg.h>
 #include <float.h>
 
-
 #include <fcntl.h>  
 #include <sys/stat.h>  
 #include <io.h>
@@ -36,8 +35,9 @@ int main(int argc, char** argv)
 
 	buffer = (char*)malloc(file_size);
 	_read(fd, buffer, file_size);
+    _close(fd);
 	
-	TomlNodes nodes = parse_toml("blah", buffer);
+	TomlNodes* nodes = parse_toml("blah", buffer);
 	
 	return 0;
 }

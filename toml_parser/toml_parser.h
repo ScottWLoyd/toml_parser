@@ -26,7 +26,7 @@ Requires:
 #define IS_ALNUM(c) (IS_DIGIT(c) || IS_ALPHA(c))
 #endif
 #ifndef TO_LOWER
-#define TO_LOWER(c) (('a' <= (c) && (c) <= 'z') ? (c) + ('a' - 'A') : (c))
+#define TO_LOWER(c) (('a' <= (c) && (c) <= 'z') ? (c) : (c) + ('a' - 'A'))
 #endif
 
 const char* dup_str(const char* str, size_t len)
@@ -115,59 +115,106 @@ void error(SrcPos pos, const char* fmt, ...)
 	printf("%s(%zu): Error: ", pos.name, pos.line);
 	vprintf(fmt, args);
 	va_end(args);
+    printf("\n");
 }
 
 #define error_here(...) error(token.pos, __VA_ARGS__)
 
-void scan_float(void)
+unsigned char char_to_digit(unsigned char c)
 {
-	const char* start = parser.stream;
-	while (IS_DIGIT(*parser.stream))
+    switch (c)
+    {
+        case '0': return 0;
+        case '1': return 1;
+        case '2': return 2;
+        case '3': return 3;
+        case '4': return 4;
+        case '5': return 5;
+        case '6': return 6;
+        case '7': return 7;
+        case '8': return 8;
+        case '9': return 9;
+        case 'a': case 'A': return 10;
+        case 'b': case 'B': return 11;
+        case 'c': case 'C': return 12;
+        case 'd': case 'D': return 13;
+        case 'e': case 'E': return 14;
+        case 'f': case 'F': return 15;
+        default:
+            return 0;
+    }
+};
+
+void scan_float(int sign)
+{
+    char* buf = NULL;
+	while (IS_DIGIT(*parser.stream) || *parser.stream == '_')
 	{
+        if (*parser.stream != '_')
+        {
+            sb_push(buf, *parser.stream);
+        }
 		parser.stream++;
 	}
 	if (*parser.stream == '.')
 	{
+        sb_push(buf, *parser.stream);
 		parser.stream++;
 	}
-	while (IS_DIGIT(*parser.stream))
+	while (IS_DIGIT(*parser.stream) || *parser.stream == '_')
 	{
+        if (*parser.stream != '_')
+        {
+            sb_push(buf, *parser.stream);
+        }
 		parser.stream++;
 	}
 	if (TO_LOWER(*parser.stream) == 'e')
 	{
+        sb_push(buf, *parser.stream);
 		parser.stream++;
 		if (*parser.stream == '+' || *parser.stream == '-')
 		{
+            sb_push(buf, *parser.stream);
 			parser.stream++;
 		}
 		if (!IS_DIGIT(*parser.stream))
 		{
 			error_here("Expected digit after float literal exponent, found '%c'.", *parser.stream);
 		}
-		while (IS_DIGIT(*parser.stream))
+		while (IS_DIGIT(*parser.stream) || *parser.stream == '_')
 		{
+            if (*parser.stream != '_')
+            {
+                sb_push(buf, *parser.stream);
+            }
 			parser.stream++;
 		}
 	}
-	const char* end = parser.stream;
-	double val = strtod(start, NULL);
+    sb_push(buf, 0);
+	double val = strtod(buf, NULL);
+    sb_free(buf);
 	if (val == DBL_MAX)
 	{
 		error_here("Float literal overflow");
 	}
 	token.kind = TOKEN_FLOAT;
-	token.float_val = val;
+	token.float_val = val * sign;
 }
 
-void scan_int(void)
+void scan_int(int sign)
 {
 	int base = 10;
 	const char* start_digits = parser.stream;
 	unsigned long long val = 0;
 	for (;;)
 	{
-		int digit = *parser.stream - '0';
+        if (*parser.stream == '_')
+        {
+            parser.stream++;
+            continue;
+        }
+		int digit = char_to_digit((unsigned char)*parser.stream);
 		if (digit == 0 && *parser.stream != '0')
 		{
 			break;
@@ -194,34 +241,8 @@ void scan_int(void)
 		error_here("Expected base %d digit, got '%c'", base, *parser.stream);
 	}
 	token.kind = TOKEN_INT;
-	token.int_val = val;
+	token.int_val = val * sign;
 }
-
-unsigned char char_to_digit(unsigned char c)
-{
-	switch (c)
-	{
-	case '0': return 0;
-	case '1': return 1;
-	case '2': return 2;
-	case '3': return 3;
-	case '4': return 4;
-	case '5': return 5;
-	case '6': return 6;
-	case '7': return 7;
-	case '8': return 8;
-	case '9': return 9;
-	case 'a': case 'A': return 10;
-	case 'b': case 'B': return 11;
-	case 'c': case 'C': return 12;
-	case 'd': case 'D': return 13;
-	case 'e': case 'E': return 14;
-	case 'f': case 'F': return 15;
-	default:
-		error_here("Expected digit, found '%c'", c);
-		return 0;
-	}
-};
 
 char escape_to_char(unsigned char c)
 {
@@ -346,21 +367,36 @@ repeat:
 			parser.stream++;
 		}
 		goto repeat;
-	case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
+	case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+    case '-': case '+': {
+        int sign = 1;
+        if (*parser.stream == '-')
+        {
+            parser.stream++;
+            sign = -1;
+        }
+        if (*parser.stream == '+')
+        {
+            parser.stream++;
+        }
+        if (!IS_DIGIT(*parser.stream))
+        {
+            error_here("Expected digit after sign");
+        }
 		const char* start = parser.stream;
-		while (IS_DIGIT(*parser.stream))
+		while (IS_DIGIT(*parser.stream) || *parser.stream == '_')
 		{
 			parser.stream++;
 		}
 		char c = *parser.stream;
 		parser.stream = start;
-		if (c == '.' || c == 'e')
+		if (c == '.' || TO_LOWER(c) == 'e')
 		{
-			scan_float();
+			scan_float(sign);
 		}
 		else
 		{
-			scan_int();
+			scan_int(sign);
 		}
 	} break;
 	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j':
@@ -370,7 +406,7 @@ repeat:
 	case 'K': case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T':
 	case 'U': case 'V': case 'W': case 'X': case 'Y': case 'Z':
 	case '_': {
-		while (IS_ALNUM(*parser.stream) || *parser.stream == '_')
+		while (IS_ALNUM(*parser.stream) || *parser.stream == '_' || *parser.stream == '.')
 		{
 			parser.stream++;
 		}
@@ -472,22 +508,30 @@ list = (list_item)+
 
 enum TomlValueKind {
 	TOMLVALUE_NONE,
+    TOMLVALUE_BOOL,
 	TOMLVALUE_INT,
 	TOMLVALUE_FLOAT,
 	TOMLVALUE_STR,
 	TOMLVALUE_ARRAY,
+    TOMLVALUE_INLINETABLE,
 };
+
+struct TomlNodes;
 
 struct TomlValue {
 	TomlValueKind kind;
 	union {
+        bool bool_val;
 		long long int_val;
 		double float_val;
 		const char* str_val;
 		struct {
-			TomlValue* array_vals;
+			TomlValue** array_vals;
 			size_t num_array_vals;
 		};
+        struct {
+            TomlNodes* table_nodes;
+        };
 	};
 };
 
@@ -498,13 +542,13 @@ struct TomlStmt {
 
 struct TomlTable {
 	const char* name;
-	TomlStmt* stmts;
+	TomlStmt** stmts;
 	size_t num_stmts;
 };
 
 struct TomlList {
 	const char* name;
-	TomlStmt* stmts;
+	TomlStmt** stmts;
 	size_t num_stmts;
 };
 
@@ -525,7 +569,7 @@ struct TomlNode {
 };
 
 struct TomlNodes {
-	TomlNode* nodes;
+	TomlNode** nodes;
 	size_t num_nodes;
 };
 
@@ -545,7 +589,7 @@ void* toml_dup(const void* src, size_t size)
 TomlNodes* new_tomlnodes(TomlNode** nodes, size_t num_nodes)
 {
 	TomlNodes* result = (TomlNodes*)TOML_MALLOC(sizeof(TomlNodes));
-	result->nodes = (TomlNode*)TOML_DUP(nodes);
+	result->nodes = (TomlNode**)TOML_DUP(nodes);
 	result->num_nodes = num_nodes;
 	return result;
 }
@@ -554,7 +598,7 @@ TomlTable* new_toml_table(const char* name, TomlStmt** stmts, size_t num_stmts)
 {
 	TomlTable* result = (TomlTable*)TOML_MALLOC(sizeof(TomlTable));
 	result->name = name;
-	result->stmts = (TomlStmt*)TOML_DUP(stmts);
+	result->stmts = (TomlStmt**)TOML_DUP(stmts);
 	result->num_stmts = num_stmts;
 	return result;
 }
@@ -563,7 +607,7 @@ TomlList* new_toml_list(const char* name, TomlStmt** stmts, size_t num_stmts)
 {
 	TomlList* result = (TomlList*)TOML_MALLOC(sizeof(TomlList));
 	result->name = name;
-	result->stmts = (TomlStmt*)TOML_DUP(stmts);
+	result->stmts = (TomlStmt**)TOML_DUP(stmts);
 	result->num_stmts = num_stmts;
 	return result;
 }
@@ -576,10 +620,29 @@ TomlStmt* new_toml_stmt(const char* name, TomlValue* value)
 	return result;
 }
 
+TomlNode* parse_toml_stmt();
+
 TomlValue* parse_toml_value()
 {
 	TomlValue* result = (TomlValue*)TOML_MALLOC(sizeof(TomlValue));
-	if (is_token(TOKEN_INT))
+    if (is_token(TOKEN_NAME))
+    {
+        if (strcmp(token.name, "true") == 0)
+        {
+            result->kind = TOMLVALUE_BOOL;
+            result->bool_val = true;
+        }
+        else if (strcmp(token.name, "false") == 0)
+        {
+            result->kind = TOMLVALUE_BOOL;
+            result->bool_val = false;
+        }
+        else
+        {
+            error_here("Expected value type, found name");
+        }
+    }
+	else if (is_token(TOKEN_INT))
 	{
 		result->kind = TOMLVALUE_INT;
 		result->int_val = token.int_val;
@@ -602,13 +665,36 @@ TomlValue* parse_toml_value()
 		sb_push(values, parse_toml_value());
 		while (is_token(TOKEN_COMMA))
 		{
+            next_token();
 			sb_push(values, parse_toml_value());
 		}
 		expect_token(TOKEN_RBRACKET);
 		size_t num_values = sb_count(values);
-		result->array_vals = (TomlValue*)TOML_DUP(values);
+		result->array_vals = (TomlValue**)TOML_DUP(values);
 		result->num_array_vals = num_values;
+        sb_free(values);
 	}
+    else if (is_token(TOKEN_LBRACE))
+    {
+        result->kind = TOMLVALUE_INLINETABLE;
+        next_token();
+        TomlNode** stmts = NULL;
+        sb_push(stmts, parse_toml_stmt());
+        while (is_token(TOKEN_COMMA))
+        {
+            next_token();
+            sb_push(stmts, parse_toml_stmt());
+        }
+        expect_token(TOKEN_RBRACE);
+        size_t num_stmts = sb_count(stmts);
+        result->table_nodes = new_tomlnodes(stmts, num_stmts);
+        sb_free(stmts);
+        return result;
+    }
+    else
+    {
+        error_here("Unexpected token %s", token_info());
+    }
 
 	next_token();
 	return result;
@@ -640,6 +726,7 @@ TomlNode* parse_toml_list_item()
 	TomlNode* node = (TomlNode*)TOML_MALLOC(sizeof(TomlNode));
 	node->kind = TOMLDECL_LIST;
 	node->list = new_toml_list(name, stmts, sb_count(stmts));
+    sb_free(stmts);
 	return node;
 }
 
@@ -664,6 +751,7 @@ TomlNode* parse_toml_collection()
 		TomlNode* node = (TomlNode*)TOML_MALLOC(sizeof(TomlNode));
 		node->kind = TOMLDECL_TABLE;
 		node->tbl = new_toml_table(name, stmts, sb_count(stmts));
+        sb_free(stmts);
 		return node;
 	}
 }
@@ -685,23 +773,30 @@ TomlNode* parse_node()
 	}
 }
 
-TomlNodes parse_toml(const char* name, const char* buf)
+TomlNodes* parse_toml(const char* name, const char* buf)
 {
 	parser.stream = buf;
 	parser.line_start = parser.stream;
 	token.pos.name = name;
-	token.pos.line = 0;
+	token.pos.line = 1;
 	next_token();
 
 	TomlNode** nodes = NULL;
 	while (!is_token(TOKEN_EOF))
 	{
-		sb_push(nodes, parse_node());
+        TomlNode* node = parse_node();
+        if (!node)
+        {
+            assert(0);
+            return NULL;
+        }
+		sb_push(nodes, node);
 	}
-	TomlNodes result;
+	TomlNodes* result = (TomlNodes*)TOML_MALLOC(sizeof(TomlNodes));
 	size_t num_nodes = sb_count(nodes);
-	result.nodes = (TomlNode*)TOML_DUP(nodes);
-	result.num_nodes = num_nodes;
+	result->nodes = (TomlNode**)TOML_DUP(nodes);
+	result->num_nodes = num_nodes;
+    sb_free(nodes);
 	return result;
 }
 
