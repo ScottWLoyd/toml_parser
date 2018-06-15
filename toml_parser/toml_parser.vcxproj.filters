@@ -28,5 +28,8 @@
     <ClInclude Include="toml_parser.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="stretchy_buffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
