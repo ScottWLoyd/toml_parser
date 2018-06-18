@@ -641,21 +641,25 @@ TomlValue* parse_toml_value()
         {
             error_here("Expected value type, found name");
         }
+        next_token();
     }
 	else if (is_token(TOKEN_INT))
 	{
 		result->kind = TOMLVALUE_INT;
 		result->int_val = token.int_val;
+        next_token();
 	}
 	else if (is_token(TOKEN_FLOAT))
 	{
 		result->kind = TOMLVALUE_FLOAT;
 		result->float_val = token.float_val;
+        next_token();
 	}
 	else if (is_token(TOKEN_STR))
 	{
 		result->kind = TOMLVALUE_STR;
 		result->str_val = token.str_val;
+        next_token();
 	}
 	else if (is_token(TOKEN_LBRACKET))
 	{
@@ -666,6 +670,10 @@ TomlValue* parse_toml_value()
 		while (is_token(TOKEN_COMMA))
 		{
             next_token();
+            if (is_token(TOKEN_RBRACKET)) // trailing commas are permitted
+            {
+                break;
+            }
 			sb_push(values, parse_toml_value());
 		}
 		expect_token(TOKEN_RBRACKET);
@@ -683,6 +691,10 @@ TomlValue* parse_toml_value()
         while (is_token(TOKEN_COMMA))
         {
             next_token();
+            if (is_token(TOKEN_RBRACE)) // trailing commas are permitted
+            {
+                break;
+            }
             sb_push(stmts, parse_toml_stmt());
         }
         expect_token(TOKEN_RBRACE);
@@ -696,7 +708,6 @@ TomlValue* parse_toml_value()
         error_here("Unexpected token %s", token_info());
     }
 
-	next_token();
 	return result;
 }
 
@@ -714,9 +725,10 @@ TomlNode* parse_toml_stmt()
 
 TomlNode* parse_toml_list_item()
 {
-	expect_token(TOKEN_LBRACKET);
 	const char* name = token.name;
 	expect_token(TOKEN_NAME);
+    expect_token(TOKEN_RBRACKET);
+    expect_token(TOKEN_RBRACKET);
 	TomlStmt** stmts = NULL;
 	while (is_token(TOKEN_NAME))
 	{
