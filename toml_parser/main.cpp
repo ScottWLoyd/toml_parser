@@ -11,6 +11,32 @@
 #include <sys/stat.h>  
 #include <io.h>
 
+#define global static
+#define local_persist static
+#define intern static
+
+#ifndef IS_SPACE
+#define IS_SPACE(c) ((c) == ' ' || (c) == '\n' || (c) == '\t' || (c) == '\r' || (c) == '\v')
+#endif
+#ifndef IS_DIGIT
+#define IS_DIGIT(c) ('0' <= (c) && (c) <= '9')
+#endif
+#ifndef IS_ALPHA
+#define IS_ALPHA(c) (('a' <= (c) && (c) <= 'z') || ('A' <= (c) && (c) <= 'Z'))
+#endif
+#ifndef IS_ALNUM
+#define IS_ALNUM(c) (IS_DIGIT(c) || IS_ALPHA(c))
+#endif
+#ifndef TO_LOWER
+#define TO_LOWER(c) (('A' <= (c) && (c) <= 'Z') ? (c) + ('a' - 'A') : (c))
+#endif
+
+intern void error(const char* buf)
+{
+	printf("Error: %s\n", buf);
+	exit(1);
+}
+
 #include "stretchy_buffer.h"
 #include "toml_parser.h"
 
@@ -25,7 +51,7 @@ void print_toml_value(TomlValue* val)
             printf("%s", val->bool_val ? "true" : "false");
             break;
         case TOMLVALUE_INT:
-            printf("%zd", val->int_val);
+            printf("%d", (int)val->float_val);
             break;
         case TOMLVALUE_FLOAT:
             printf("%f", val->float_val);
@@ -128,5 +154,22 @@ int main(int argc, char** argv)
         print_toml_node(node);
     }
 	
+    TomlNodes* results = toml_find_nodes(nodes->nodes, nodes->num_nodes, "test");
+    assert(results->num_nodes == 1);
+    results = toml_find_nodes(nodes->nodes, nodes->num_nodes, "table");
+    assert(results->num_nodes == 3);
+    results = toml_find_nodes(nodes->nodes, nodes->num_nodes, "float");
+    assert(results->num_nodes == 4);
+    results = toml_find_nodes(nodes->nodes, nodes->num_nodes, "products");
+    assert(results->num_nodes == 3);
+    results = toml_find_nodes(nodes->nodes, nodes->num_nodes, "bool");
+    assert(results->num_nodes == 0);
+    results = toml_find_nodes(nodes->nodes, nodes->num_nodes, "boolean");
+    assert(results->num_nodes == 1);
+    results = toml_find_nodes(nodes->nodes, nodes->num_nodes, "integer.key1");
+    assert(results->num_nodes == 1);
+    results = toml_find_nodes(nodes->nodes, nodes->num_nodes, "products.name");
+    assert(results->num_nodes == 2);
+
 	return 0;
 }
